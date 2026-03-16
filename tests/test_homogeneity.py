@@ -6,7 +6,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
-from stats_engine.assumption_checker import test_homogeneity
+from stats_engine.assumption_checker import check_homogeneity
 
 
 np.random.seed(42)
@@ -14,7 +14,7 @@ np.random.seed(42)
 # Test 1: Equal variance (should pass)
 g1 = pd.Series(np.random.normal(0, 1, 50))
 g2 = pd.Series(np.random.normal(2, 1, 50))
-result = test_homogeneity([g1, g2])
+result = check_homogeneity([g1, g2])
 print("Equal variance test:")
 print(f"  Passed: {result['passed']}")
 print(f"  p-value: {result['p_value']}")
@@ -23,7 +23,7 @@ print(f"  Note: {result['note']}")
 # Test 2: Unequal variance (should fail)
 g1 = pd.Series(np.random.normal(0, 1, 50))
 g2 = pd.Series(np.random.normal(0, 10, 50))
-result = test_homogeneity([g1, g2])
+result = check_homogeneity([g1, g2])
 print("\nUnequal variance test:")
 print(f"  Passed: {result['passed']}")
 print(f"  p-value: {result['p_value']}")
@@ -33,7 +33,7 @@ print(f"  Note: {result['note']}")
 g1 = pd.Series(np.random.normal(0, 1, 30))
 g2 = pd.Series(np.random.normal(1, 1, 30))
 g3 = pd.Series(np.random.normal(2, 1, 30))
-result = test_homogeneity([g1, g2, g3])
+result = check_homogeneity([g1, g2, g3])
 print("\nThree groups test:")
 print(f"  n_groups: {result['n_groups']}")
 print(f"  group_sizes: {result['group_sizes']}")
