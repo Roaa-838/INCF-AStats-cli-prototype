@@ -4,7 +4,7 @@ from scipy import stats
 from typing import List, Dict, Any
 
 
-def check_homogeneity(
+def test_homogeneity(
     groups: List[pd.Series],
     alpha: float = 0.05
 ) -> Dict[str, Any]:
@@ -70,7 +70,7 @@ def check_homogeneity(
         }
     
 
-def check_normality(data: pd.Series, alpha: float = 0.05) -> Dict[str, Any]:
+def test_normality(data: pd.Series, alpha: float = 0.05) -> Dict[str, Any]:
 
     # Drop NaN values
     clean_data = data.dropna()
