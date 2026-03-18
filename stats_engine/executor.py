@@ -149,3 +149,21 @@ def _mann_whitney_u(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'success': True,
         'error': None
     }
+
+def _paired_t(*args, **kwargs):
+    raise NotImplementedError("paired_t not implemented yet")
+
+def _wilcoxon(*args, **kwargs):
+    raise NotImplementedError("wilcoxon not implemented yet")
+
+def _one_way_anova(*args, **kwargs):
+    raise NotImplementedError("one_way_anova not implemented yet")
+
+def _kruskal_wallis(*args, **kwargs):
+    raise NotImplementedError("kruskal_wallis not implemented yet")
+
+def _pearson_correlation(*args, **kwargs):
+    raise NotImplementedError("pearson correlation not implemented yet")
+
+def _spearman_correlation(*args, **kwargs):
+    raise NotImplementedError("spearman correlation not implemented yet")
