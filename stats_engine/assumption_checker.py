@@ -140,6 +140,7 @@ def check_normality(data: pd.Series, alpha: float = 0.05) -> Dict[str, Any]:
         "note": note
     }
 
+
 def recommend_test(
     data_profile: Dict[str, Any],
     design: str = "independent",
@@ -286,3 +287,49 @@ def recommend_test(
         'n_groups': n_groups,
         'design': design
     }
+
+def build_data_profile(
+    groups: Dict[str, pd.Series],
+    design: str = "independent",
+    alpha: float = 0.05
+) -> Dict[str, Any]:
+    
+    profile = {
+        'n_groups': len(groups),
+        'design': design,
+        'alpha': alpha,
+        'normality': {},
+        'sample_sizes': {},
+        'descriptive_stats': {}
+    }
+    
+    # Check normality for each group
+    for group_name, data in groups.items():
+        profile['normality'][group_name] = check_normality(data, alpha)
+        profile['sample_sizes'][group_name] = len(data.dropna())
+        
+        # Basic descriptive stats
+        clean_data = data.dropna()
+        if len(clean_data) > 0:
+            profile['descriptive_stats'][group_name] = {
+                'mean': round(float(clean_data.mean()), 4),
+                'median': round(float(clean_data.median()), 4),
+                'std': round(float(clean_data.std()), 4),
+                'min': round(float(clean_data.min()), 4),
+                'max': round(float(clean_data.max()), 4)
+            }
+    
+    # Check homogeneity of variance (only for independent design with 2+ groups)
+    if design == "independent" and len(groups) >= 2:
+        group_list = list(groups.values())
+        profile['homogeneity'] = check_homogeneity(group_list, alpha)
+    
+    # Get test recommendation
+    recommendation = recommend_test(
+        profile,
+        design=design,
+        n_groups=len(groups)
+    )
+    profile['recommendation'] = recommendation
+    
+    return profile
