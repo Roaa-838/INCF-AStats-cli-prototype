@@ -78,23 +78,45 @@ Also tested on Iris dataset - correctly identified that variance was unequal acr
 ## How the Decision Tree Works
 
 The routing is conservative - if ANY group fails an assumption, use the robust alternative:
-```
-For 2 independent groups:
-  - Both normal + equal variance → Independent t-test
-  - Both normal + unequal variance → Welch's t-test  
-  - Either/both non-normal → Mann-Whitney U
-
-For paired data:
-  - Normal differences → Paired t-test
-  - Non-normal differences → Wilcoxon signed-rank
-
-For 3+ groups:
-  - All normal + equal variance → One-way ANOVA
-  - Otherwise → Kruskal-Wallis
-
-For correlation:
-  - Both normal → Pearson
-  - Either non-normal → Spearman
+### Decision Tree Visualization
+```mermaid
+graph TD
+    Start[Data Input] --> CheckGroups{How many<br/>groups?}
+    
+    CheckGroups -->|2 groups| CheckDesign{Paired or<br/>Independent?}
+    CheckGroups -->|3+ groups| Check3Normal{All groups<br/>normal?}
+    CheckGroups -->|Correlation| CheckCorrNormal{Both variables<br/>normal?}
+    
+    CheckDesign -->|Independent| Check2Normal{Both groups<br/>normal?}
+    CheckDesign -->|Paired| CheckPairedNormal{Differences<br/>normal?}
+    
+    Check2Normal -->|Yes| CheckVariance{Equal<br/>variance?}
+    Check2Normal -->|No| MW[Mann-Whitney U]
+    
+    CheckVariance -->|Yes| IT[Independent t-test]
+    CheckVariance -->|No| WT[Welch's t-test]
+    
+    CheckPairedNormal -->|Yes| PT[Paired t-test]
+    CheckPairedNormal -->|No| WX[Wilcoxon signed-rank]
+    
+    Check3Normal -->|Yes| Check3Variance{Equal<br/>variance?}
+    Check3Normal -->|No| KW[Kruskal-Wallis]
+    
+    Check3Variance -->|Yes| ANOVA[One-way ANOVA]
+    Check3Variance -->|No| KW
+    
+    CheckCorrNormal -->|Yes| PR[Pearson r]
+    CheckCorrNormal -->|No| SR[Spearman rho]
+    
+    style IT fill:#90EE90
+    style WT fill:#90EE90
+    style MW fill:#FFB6C1
+    style PT fill:#90EE90
+    style WX fill:#FFB6C1
+    style ANOVA fill:#90EE90
+    style KW fill:#FFB6C1
+    style PR fill:#87CEEB
+    style SR fill:#FFB6C1
 ```
 
 I went with conservative routing because I'd rather lose 5% statistical power than give someone invalid p-values.
