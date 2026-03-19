@@ -122,3 +122,195 @@ def get_two_group_scenarios() -> Dict[str, Any]:
     }
     
     return scenarios
+
+
+def three_groups_normal_homosc(
+    n_per_group: int = 30,
+    means: Tuple[float, float, float] = (0.0, 0.5, 1.0),
+    std: float = 1.0,
+    seed: int = 42
+) -> Tuple[pd.DataFrame, str, str, str, str]:
+    
+    np.random.seed(seed)
+    
+    group_a = np.random.normal(means[0], std, n_per_group)
+    group_b = np.random.normal(means[1], std, n_per_group)
+    group_c = np.random.normal(means[2], std, n_per_group)
+    
+    df = pd.DataFrame({
+        'value': np.concatenate([group_a, group_b, group_c]),
+        'group': ['A'] * n_per_group + ['B'] * n_per_group + ['C'] * n_per_group
+    })
+    
+    return (
+        df,
+        'value',
+        'group',
+        'one_way_anova',
+        'three_groups_normal_homoscedastic'
+    )
+
+
+def three_groups_nonnormal(
+    n_per_group: int = 30,
+    scales: Tuple[float, float, float] = (1.0, 1.5, 2.0),
+    seed: int = 42
+) -> Tuple[pd.DataFrame, str, str, str, str]:
+
+    np.random.seed(seed)
+    
+    group_a = np.random.exponential(scales[0], n_per_group)
+    group_b = np.random.exponential(scales[1], n_per_group)
+    group_c = np.random.exponential(scales[2], n_per_group)
+    
+    df = pd.DataFrame({
+        'value': np.concatenate([group_a, group_b, group_c]),
+        'group': ['A'] * n_per_group + ['B'] * n_per_group + ['C'] * n_per_group
+    })
+    
+    return (
+        df,
+        'value',
+        'group',
+        'kruskal_wallis',
+        'three_groups_nonnormal_exponential'
+    )
+
+
+def continuous_correlation_normal(
+    n: int = 100,
+    correlation: float = 0.7,
+    seed: int = 42
+) -> Tuple[pd.DataFrame, str, str, str, str]:
+
+    np.random.seed(seed)
+    
+    x = np.random.normal(0, 1, n)
+    # Create correlated y: y = r*x + sqrt(1-r²)*noise
+    noise = np.random.normal(0, 1, n)
+    y = correlation * x + np.sqrt(1 - correlation**2) * noise
+    
+    df = pd.DataFrame({'x': x, 'y': y})
+    
+    return (
+        df,
+        'x',  # using both x and y, but target_col represents first variable
+        'y',  # group_col represents second variable (repurposed for correlation)
+        'pearson_r',
+        'continuous_correlation_normal_linear'
+    )
+
+
+def continuous_correlation_nonnormal(
+    n: int = 100,
+    seed: int = 42
+) -> Tuple[pd.DataFrame, str, str, str, str]:
+
+    np.random.seed(seed)
+    
+    x = np.random.exponential(1, n)  # Non-normal
+    # Quadratic relationship (monotonic but not linear)
+    y = x**2 + np.random.normal(0, 5, n)
+    
+    df = pd.DataFrame({'x': x, 'y': y})
+    
+    return (
+        df,
+        'x',
+        'y',
+        'spearman_r',
+        'continuous_correlation_nonnormal_monotonic'
+    )
+
+
+def neuro_reaction_times(
+    n_per_condition: int = 40,
+    seed: int = 42
+) -> Tuple[pd.DataFrame, str, str, str, str]:
+   
+    np.random.seed(seed)
+    
+    # Log-normal parameters: exp(mean) gives median
+    baseline = np.random.lognormal(np.log(300), 0.2, n_per_condition)
+    cue = np.random.lognormal(np.log(250), 0.2, n_per_condition)
+    no_cue = np.random.lognormal(np.log(350), 0.2, n_per_condition)
+    
+    df = pd.DataFrame({
+        'reaction_time_ms': np.concatenate([baseline, cue, no_cue]),
+        'condition': (
+            ['baseline'] * n_per_condition +
+            ['cue'] * n_per_condition +
+            ['no_cue'] * n_per_condition
+        )
+    })
+    
+    return (
+        df,
+        'reaction_time_ms',
+        'condition',
+        'kruskal_wallis',
+        'neuro_reaction_times_three_conditions'
+    )
+
+
+def get_all_scenarios() -> Dict[str, Any]:
+
+    scenarios = {}
+    
+    # Two-group scenarios (3)
+    scenarios.update(get_two_group_scenarios())
+    
+    # Three-group scenarios (2)
+    df, target, group, test, name = three_groups_normal_homosc()
+    scenarios[name] = {
+        'df': df,
+        'target_col': target,
+        'group_col': group,
+        'correct_test': test,
+        'scenario_name': name,
+        'description': 'Three normal groups, equal variance (one-way ANOVA)'
+    }
+    
+    df, target, group, test, name = three_groups_nonnormal()
+    scenarios[name] = {
+        'df': df,
+        'target_col': target,
+        'group_col': group,
+        'correct_test': test,
+        'scenario_name': name,
+        'description': 'Three exponential groups (Kruskal-Wallis)'
+    }
+    
+    # Correlation scenarios (2)
+    df, x_col, y_col, test, name = continuous_correlation_normal()
+    scenarios[name] = {
+        'df': df,
+        'target_col': x_col,
+        'group_col': y_col,  # Repurposed for correlation
+        'correct_test': test,
+        'scenario_name': name,
+        'description': 'Linear correlation, both normal (Pearson)'
+    }
+    
+    df, x_col, y_col, test, name = continuous_correlation_nonnormal()
+    scenarios[name] = {
+        'df': df,
+        'target_col': x_col,
+        'group_col': y_col,
+        'correct_test': test,
+        'scenario_name': name,
+        'description': 'Monotonic correlation, non-normal (Spearman)'
+    }
+    
+    # Neuroscience scenario
+    df, target, group, test, name = neuro_reaction_times()
+    scenarios[name] = {
+        'df': df,
+        'target_col': target,
+        'group_col': group,
+        'correct_test': test,
+        'scenario_name': name,
+        'description': 'Neuroscience RT data, 3 conditions, log-normal (Kruskal-Wallis)'
+    }
+    
+    return scenarios
