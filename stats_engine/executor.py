@@ -186,9 +186,39 @@ def _paired_t(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'error': None
     }
 
-def _wilcoxon(*args, **kwargs):
-    raise NotImplementedError("wilcoxon not implemented yet")
+def _wilcoxon(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 
+    groups = list(data.values())
+    if len(groups) != 2:
+        raise ValueError(f"Wilcoxon test requires exactly 2 groups, got {len(groups)}")
+    
+    g1, g2 = groups[0].dropna(), groups[1].dropna()
+    
+    if len(g1) != len(g2):
+        raise ValueError(f"Paired test requires equal sample sizes, got {len(g1)} and {len(g2)}")
+    
+    # Wilcoxon signed-rank test
+    result = stats.wilcoxon(g1, g2)
+    
+    # Rank-biserial correlation for paired data
+    # Simplified: (# positive differences - # negative differences) / total
+    differences = g1 - g2
+    n_positive = sum(differences > 0)
+    n_negative = sum(differences < 0)
+    rank_biserial_r = (n_positive - n_negative) / len(differences)
+    
+    return {
+        'test': 'wilcoxon_signed_rank',
+        'statistic': float(result.statistic),
+        'p_value': float(result.pvalue),
+        'effect_size': float(rank_biserial_r),
+        'effect_type': 'rank_biserial_r',
+        'n_pairs': len(g1),
+        'median_difference': float((g1 - g2).median()),
+        'note': "Non-parametric test - tests if median difference is zero",
+        'success': True,
+        'error': None
+    }
 
 def _one_way_anova(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 
