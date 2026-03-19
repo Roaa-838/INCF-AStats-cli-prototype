@@ -156,8 +156,45 @@ def _paired_t(*args, **kwargs):
 def _wilcoxon(*args, **kwargs):
     raise NotImplementedError("wilcoxon not implemented yet")
 
-def _one_way_anova(*args, **kwargs):
-    raise NotImplementedError("one_way_anova not implemented yet")
+
+def _one_way_anova(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    groups = [g.dropna() for g in data.values()]
+    if len(groups) < 2:
+        raise ValueError(f"ANOVA requires at least 2 groups, got {len(groups)}")
+    
+    # One-way ANOVA
+    result = stats.f_oneway(*groups)
+    
+    # Eta-squared effect size
+    # η² = SS_between / SS_total
+    # Can be computed from F-statistic and sample sizes
+    n_total = sum(len(g) for g in groups)
+    k = len(groups)  # number of groups
+    df_between = k - 1
+    df_within = n_total - k
+    
+    F = result.statistic
+    eta_squared = (df_between * F) / (df_between * F + df_within)
+    
+    group_sizes = [len(g) for g in groups]
+    group_means = [float(g.mean()) for g in groups]
+    
+    return {
+        'test': 'one_way_anova',
+        'statistic': float(result.statistic),  # F statistic
+        'p_value': float(result.pvalue),
+        'effect_size': float(eta_squared),
+        'effect_type': 'eta_squared',
+        'n_samples': {f'group_{i+1}': n for i, n in enumerate(group_sizes)},
+        'means': {f'group_{i+1}': m for i, m in enumerate(group_means)},
+        'n_groups': len(groups),
+        'degrees_of_freedom': {'between': df_between, 'within': df_within},
+        'note': "If significant, follow up with post-hoc tests (Tukey HSD)",
+        'success': True,
+        'error': None
+    }
+
 
 def _kruskal_wallis(*args, **kwargs):
     raise NotImplementedError("kruskal_wallis not implemented yet")
