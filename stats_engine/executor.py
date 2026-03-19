@@ -27,7 +27,12 @@ def run_test(
             'one_way_anova': _one_way_anova,
             'kruskal_wallis': _kruskal_wallis,
             'pearson_r': _pearson_correlation,
-            'spearman_r': _spearman_correlation
+            'spearman_r': _spearman_correlation,
+            'friedman': _friedman,
+            'welch_anova': _welch_anova,
+            'tukey_hsd': _tukey_hsd,
+            'dunns_test': _dunns_test,
+            'pairwise_wilcoxon': _pairwise_wilcoxon
         }
         
         if test_name not in test_map:
@@ -349,6 +354,104 @@ def _spearman_correlation(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any
         'correlation': float(result.statistic),
         'n_pairs': len(x),
         'note': "Non-parametric - measures monotonic (not necessarily linear) relationship",
+        'success': True,
+        'error': None
+    }
+
+
+def _friedman(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+    
+    groups = [g.dropna() for g in data.values()]
+    if len(groups) < 3:
+        raise ValueError(
+            f"Friedman test requires at least 3 conditions, got {len(groups)}. "
+            "Use Wilcoxon signed-rank for 2 paired conditions."
+        )
+    
+    # All groups must have same length (repeated measures requirement)
+    lengths = [len(g) for g in groups]
+    if len(set(lengths)) > 1:
+        raise ValueError(
+            f"Friedman test requires equal observations per condition. "
+            f"Got sizes: {lengths}. This indicates missing data or "
+            f"unequal repeated measures — consider pairwise Wilcoxon instead."
+        )
+    
+    result = stats.friedmanchisquare(*groups)
+    
+    n = len(groups[0])   # number of subjects
+    k = len(groups)       # number of conditions
+    
+    # W = chi2 / (n * (k - 1))
+    kendalls_w = result.statistic / (n * (k - 1))
+    
+    group_medians = {
+        name: float(g.median())
+        for name, g in data.items()
+    }
+    
+    return {
+        'test': 'friedman',
+        'statistic': float(result.statistic),  # chi-squared statistic
+        'p_value': float(result.pvalue),
+        'effect_size': float(kendalls_w),
+        'effect_type': 'kendalls_w',
+        'n_subjects': n,
+        'n_conditions': k,
+        'medians': group_medians,
+        'note': (
+            "Friedman test: non-parametric repeated measures. "
+            "If significant, follow up with pairwise Wilcoxon + Bonferroni correction."
+        ),
+        'success': True,
+        'error': None
+    }
+
+
+def _welch_anova(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    try:
+        from statsmodels.stats.oneway import anova_oneway
+    except ImportError:
+        raise ImportError(
+            "statsmodels required for Welch's ANOVA. "
+            "Install with: pip install statsmodels"
+        )
+    
+    groups = [g.dropna() for g in data.values()]
+    if len(groups) < 3:
+        raise ValueError(
+            f"Welch's ANOVA requires at least 3 groups, got {len(groups)}."
+        )
+    
+    result = anova_oneway(groups, use_var='unequal')
+    
+    # eta² = (df_between * F) / (df_between * F + df_within)
+    k = len(groups)
+    n_total = sum(len(g) for g in groups)
+    df_between = k - 1
+    df_within_approx = n_total - k
+    
+    F = float(result.statistic)
+    eta_squared = (df_between * F) / (df_between * F + df_within_approx)
+    
+    group_means = {
+        name: float(g.mean())
+        for name, g in data.items()
+    }
+    
+    return {
+        'test': 'welch_anova',
+        'statistic': F,
+        'p_value': float(result.pvalue),
+        'effect_size': eta_squared,
+        'effect_type': 'eta_squared',
+        'n_groups': k,
+        'means': group_means,
+        'note': (
+            "Welch's ANOVA does not assume equal variance. "
+            "If significant, follow up with Games-Howell post-hoc test."
+        ),
         'success': True,
         'error': None
     }
