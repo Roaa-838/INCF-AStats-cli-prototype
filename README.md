@@ -170,4 +170,3 @@ Basically: let the rule-based system handle the math, let the LLM handle the nat
 
 Built by Roaa Raafat for GSoC 2026 - INCF Project #33  
 Repo: https://github.com/Roaa-838/INCF-AStats-cli-prototype
-```
