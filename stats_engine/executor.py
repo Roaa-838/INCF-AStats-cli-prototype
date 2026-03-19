@@ -322,5 +322,33 @@ def _pearson_correlation(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]
         'error': None
     }
 
-def _spearman_correlation(*args, **kwargs):
-    raise NotImplementedError("spearman correlation not implemented yet")
+def _spearman_correlation(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+ 
+    groups = list(data.values())
+    if len(groups) != 2:
+        raise ValueError(f"Correlation requires exactly 2 variables, got {len(groups)}")
+    
+    x, y = groups[0].dropna(), groups[1].dropna()
+    
+    # Align by index
+    df = pd.DataFrame({'x': x, 'y': y}).dropna()
+    x, y = df['x'], df['y']
+    
+    if len(x) < 3:
+        raise ValueError(f"Correlation requires at least 3 pairs, got {len(x)}")
+    
+    # Spearman correlation
+    result = stats.spearmanr(x, y)
+    
+    return {
+        'test': 'spearman_r',
+        'statistic': float(result.statistic),  # rho value
+        'p_value': float(result.pvalue),
+        'effect_size': float(result.statistic ** 2),  # rho²
+        'effect_type': 'rho_squared',
+        'correlation': float(result.statistic),
+        'n_pairs': len(x),
+        'note': "Non-parametric - measures monotonic (not necessarily linear) relationship",
+        'success': True,
+        'error': None
+    }
