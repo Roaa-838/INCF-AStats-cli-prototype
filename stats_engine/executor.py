@@ -150,8 +150,41 @@ def _mann_whitney_u(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'error': None
     }
 
-def _paired_t(*args, **kwargs):
-    raise NotImplementedError("paired_t not implemented yet")
+def _paired_t(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    groups = list(data.values())
+    if len(groups) != 2:
+        raise ValueError(f"Paired t-test requires exactly 2 groups, got {len(groups)}")
+    
+    g1, g2 = groups[0].dropna(), groups[1].dropna()
+    
+    if len(g1) != len(g2):
+        raise ValueError(
+            f"Paired test requires equal sample sizes, got {len(g1)} and {len(g2)}. "
+            "Ensure data is properly aligned (same indices)."
+        )
+    
+    # Paired t-test
+    result = stats.ttest_rel(g1, g2)
+    
+    # Cohen's d for paired samples
+    # d = mean_difference / SD_difference
+    differences = g1 - g2
+    cohen_d = differences.mean() / differences.std() if differences.std() > 0 else 0.0
+    
+    return {
+        'test': 'paired_t',
+        'statistic': float(result.statistic),
+        'p_value': float(result.pvalue),
+        'effect_size': float(cohen_d),
+        'effect_type': 'cohen_d',
+        'n_pairs': len(g1),
+        'mean_difference': float(differences.mean()),
+        'std_difference': float(differences.std()),
+        'note': "Tests if mean difference (before - after) is significantly different from zero",
+        'success': True,
+        'error': None
+    }
 
 def _wilcoxon(*args, **kwargs):
     raise NotImplementedError("wilcoxon not implemented yet")
