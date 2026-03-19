@@ -455,3 +455,214 @@ def _welch_anova(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'success': True,
         'error': None
     }
+
+
+def _tukey_hsd(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    from statsmodels.stats.multicomp import pairwise_tukeyhsd
+    
+    # Reshape into long format for statsmodels
+    values = []
+    labels = []
+    for group_name, series in data.items():
+        clean = series.dropna()
+        values.extend(clean.tolist())
+        labels.extend([group_name] * len(clean))
+    
+    values_arr = np.array(values)
+    labels_arr = np.array(labels)
+    
+    result = pairwise_tukeyhsd(values_arr, labels_arr, alpha=0.05)
+    
+    # Extract pairwise results into readable format
+    comparisons = []
+    summary = result.summary()
+    
+    # result._results_table has the data we need
+    for row in result._results_table.data[1:]:  # skip header
+        group1, group2, meandiff, p_adj, lower, upper, reject = row
+        comparisons.append({
+            'group1': str(group1),
+            'group2': str(group2),
+            'mean_difference': float(meandiff),
+            'p_adjusted': float(p_adj),
+            'ci_lower': float(lower),
+            'ci_upper': float(upper),
+            'significant': bool(reject)
+        })
+    
+    significant_pairs = [
+        f"{c['group1']} vs {c['group2']}"
+        for c in comparisons
+        if c['significant']
+    ]
+    
+    return {
+        'test': 'tukey_hsd',
+        'comparisons': comparisons,
+        'n_comparisons': len(comparisons),
+        'significant_pairs': significant_pairs,
+        'alpha_corrected': 0.05,
+        'method': 'Tukey HSD (controls familywise error rate)',
+        'note': (
+            f"Found {len(significant_pairs)} significant pairwise difference(s): "
+            f"{', '.join(significant_pairs) if significant_pairs else 'none'}."
+        ),
+        'success': True,
+        'error': None
+    }
+
+
+def _dunns_test(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    try:
+        import scikit_posthocs as sp
+    except ImportError:
+        # Fallback: manual Bonferroni-corrected Mann-Whitney U
+        return _dunns_test_manual(data, **kwargs)
+    
+    # Build long-format DataFrame
+    records = []
+    for group_name, series in data.items():
+        for val in series.dropna():
+            records.append({'group': group_name, 'value': float(val)})
+    
+    df = pd.DataFrame(records)
+    
+    # Dunn's test with Holm correction
+    p_matrix = sp.posthoc_dunn(
+        df, val_col='value', group_col='group', p_adjust='holm'
+    )
+    
+    # Extract pairwise results
+    groups = list(data.keys())
+    comparisons = []
+    
+    for i, g1 in enumerate(groups):
+        for j, g2 in enumerate(groups):
+            if j <= i:
+                continue
+            p_adj = float(p_matrix.loc[g1, g2])
+            comparisons.append({
+                'group1': g1,
+                'group2': g2,
+                'p_adjusted': round(p_adj, 4),
+                'significant': p_adj < 0.05
+            })
+    
+    significant_pairs = [
+        f"{c['group1']} vs {c['group2']}"
+        for c in comparisons
+        if c['significant']
+    ]
+    
+    return {
+        'test': 'dunns_test',
+        'comparisons': comparisons,
+        'n_comparisons': len(comparisons),
+        'significant_pairs': significant_pairs,
+        'correction': 'Holm-Bonferroni',
+        'note': (
+            f"Dunn's test (Holm correction): "
+            f"{len(significant_pairs)} significant pair(s): "
+            f"{', '.join(significant_pairs) if significant_pairs else 'none'}."
+        ),
+        'success': True,
+        'error': None
+    }
+
+
+def _dunns_test_manual(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    groups = list(data.keys())
+    n_comparisons = len(groups) * (len(groups) - 1) // 2
+    
+    comparisons = []
+    for i, g1 in enumerate(groups):
+        for j, g2 in enumerate(groups):
+            if j <= i:
+                continue
+            s1 = data[g1].dropna()
+            s2 = data[g2].dropna()
+            _, p_raw = stats.mannwhitneyu(s1, s2, alternative='two-sided')
+            # Bonferroni correction
+            p_adj = min(float(p_raw) * n_comparisons, 1.0)
+            comparisons.append({
+                'group1': g1,
+                'group2': g2,
+                'p_adjusted': round(p_adj, 4),
+                'significant': p_adj < 0.05,
+                'correction': 'Bonferroni'
+            })
+    
+    significant_pairs = [
+        f"{c['group1']} vs {c['group2']}"
+        for c in comparisons
+        if c['significant']
+    ]
+    
+    return {
+        'test': 'dunns_test',
+        'comparisons': comparisons,
+        'n_comparisons': n_comparisons,
+        'significant_pairs': significant_pairs,
+        'correction': 'Bonferroni (manual fallback)',
+        'note': f"Install scikit-posthocs for Holm correction. {len(significant_pairs)} significant pair(s).",
+        'success': True,
+        'error': None
+    }
+
+
+def _pairwise_wilcoxon(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    groups = list(data.keys())
+    conditions = list(data.values())
+    
+    n = len(conditions[0].dropna())
+    n_comparisons = len(groups) * (len(groups) - 1) // 2
+    
+    raw_results = []
+    for i, g1 in enumerate(groups):
+        for j, g2 in enumerate(groups):
+            if j <= i:
+                continue
+            s1 = data[g1].dropna().values
+            s2 = data[g2].dropna().values
+            min_len = min(len(s1), len(s2))
+            stat, p_raw = stats.wilcoxon(s1[:min_len], s2[:min_len])
+            raw_results.append({
+                'group1': g1,
+                'group2': g2,
+                'statistic': float(stat),
+                'p_raw': float(p_raw)
+            })
+    
+    # Holm-Bonferroni correction
+    raw_results.sort(key=lambda x: x['p_raw'])
+    comparisons = []
+    for rank, r in enumerate(raw_results):
+        p_adj = min(r['p_raw'] * (n_comparisons - rank), 1.0)
+        comparisons.append({
+            'group1': r['group1'],
+            'group2': r['group2'],
+            'statistic': r['statistic'],
+            'p_adjusted': round(p_adj, 4),
+            'significant': p_adj < 0.05
+        })
+    
+    significant_pairs = [
+        f"{c['group1']} vs {c['group2']}"
+        for c in comparisons
+        if c['significant']
+    ]
+    
+    return {
+        'test': 'pairwise_wilcoxon',
+        'comparisons': comparisons,
+        'n_comparisons': n_comparisons,
+        'significant_pairs': significant_pairs,
+        'correction': 'Holm-Bonferroni',
+        'note': f"{len(significant_pairs)} significant pair(s) after correction.",
+        'success': True,
+        'error': None
+    }
