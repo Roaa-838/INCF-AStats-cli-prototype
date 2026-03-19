@@ -196,8 +196,40 @@ def _one_way_anova(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
     }
 
 
-def _kruskal_wallis(*args, **kwargs):
-    raise NotImplementedError("kruskal_wallis not implemented yet")
+def _kruskal_wallis(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    groups = [g.dropna() for g in data.values()]
+    if len(groups) < 2:
+        raise ValueError(f"Kruskal-Wallis requires at least 2 groups, got {len(groups)}")
+    
+    # Kruskal-Wallis test
+    result = stats.kruskal(*groups)
+    
+    # Epsilon-squared effect size
+    # ε² = (H - k + 1) / (n - k)
+    # where H is the test statistic, k is number of groups, n is total sample size
+    n_total = sum(len(g) for g in groups)
+    k = len(groups)
+    H = result.statistic
+    
+    epsilon_squared = (H - k + 1) / (n_total - k) if (n_total - k) > 0 else 0.0
+    
+    group_sizes = [len(g) for g in groups]
+    group_medians = [float(g.median()) for g in groups]
+    
+    return {
+        'test': 'kruskal_wallis',
+        'statistic': float(result.statistic),  # H statistic
+        'p_value': float(result.pvalue),
+        'effect_size': float(epsilon_squared),
+        'effect_type': 'epsilon_squared',
+        'n_samples': {f'group_{i+1}': n for i, n in enumerate(group_sizes)},
+        'medians': {f'group_{i+1}': m for i, m in enumerate(group_medians)},
+        'n_groups': len(groups),
+        'note': "Non-parametric test - if significant, follow up with Dunn's test",
+        'success': True,
+        'error': None
+    }
 
 def _pearson_correlation(*args, **kwargs):
     raise NotImplementedError("pearson correlation not implemented yet")
