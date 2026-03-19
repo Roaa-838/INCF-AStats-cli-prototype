@@ -85,7 +85,6 @@ def _independent_t(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'error': None
     }
 
-
 def _welch_t(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 
     groups = list(data.values())
@@ -117,7 +116,6 @@ def _welch_t(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'success': True,
         'error': None
     }
-
 
 def _mann_whitney_u(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 
@@ -258,7 +256,6 @@ def _one_way_anova(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'error': None
     }
 
-
 def _kruskal_wallis(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 
     groups = [g.dropna() for g in data.values()]
@@ -294,8 +291,36 @@ def _kruskal_wallis(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'error': None
     }
 
-def _pearson_correlation(*args, **kwargs):
-    raise NotImplementedError("pearson correlation not implemented yet")
+def _pearson_correlation(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+
+    groups = list(data.values())
+    if len(groups) != 2:
+        raise ValueError(f"Correlation requires exactly 2 variables, got {len(groups)}")
+    
+    x, y = groups[0].dropna(), groups[1].dropna()
+    
+    # Align by index (in case of missing values)
+    df = pd.DataFrame({'x': x, 'y': y}).dropna()
+    x, y = df['x'], df['y']
+    
+    if len(x) < 3:
+        raise ValueError(f"Correlation requires at least 3 pairs, got {len(x)}")
+    
+    # Pearson correlation
+    result = stats.pearsonr(x, y)
+    
+    return {
+        'test': 'pearson_r',
+        'statistic': float(result.statistic),  # r value
+        'p_value': float(result.pvalue),
+        'effect_size': float(result.statistic ** 2),  # r²
+        'effect_type': 'r_squared',
+        'correlation': float(result.statistic),
+        'n_pairs': len(x),
+        'note': f"r = {result.statistic:.3f} explains {result.statistic**2*100:.1f}% of variance",
+        'success': True,
+        'error': None
+    }
 
 def _spearman_correlation(*args, **kwargs):
     raise NotImplementedError("spearman correlation not implemented yet")
