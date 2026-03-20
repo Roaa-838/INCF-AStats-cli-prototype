@@ -242,37 +242,41 @@ def recommend_test(
                 "but is more robust to outliers and skewed distributions."
             )
     
+
     elif n_groups >= 3:
-        # Three or more independent groups
         if all_normal and variance_equal:
             test = "one_way_anova"
             rationale = f"{n_groups} independent groups, all normal, equal variance"
-            alternative_tests = ["kruskal_wallis", "welch_anova"]
+            alternative_tests = ["kruskal_wallis"]
             warnings.append(
-                "If ANOVA is significant, follow up with post-hoc tests "
-                "(Tukey HSD, Bonferroni) to identify which groups differ."
+                "ANOVA significant? Run Tukey HSD post-hoc to identify which groups differ."
             )
+        
+        elif all_normal and not variance_equal:
+            test = "welch_anova"
+            rationale = (
+                f"{n_groups} independent groups, normal distributions, unequal variance. "
+                "Welch's ANOVA is more powerful than Kruskal-Wallis when normality holds."
+            )
+            alternative_tests = ["kruskal_wallis"]
+            warnings.append(
+                "Welch's ANOVA chosen over Kruskal-Wallis: data is normal but variance is heterogeneous. "
+                "If significant, use Games-Howell post-hoc (does not assume equal variance)."
+            )
+        
         else:
             test = "kruskal_wallis"
-            
-            # Determine reason for non-parametric choice
             reasons = []
             if not all_normal:
                 reasons.append(f"{non_normal_count} group(s) failed normality")
             if not variance_equal:
-                reasons.append("unequal variance across groups")
-            
-            rationale = (
-                f"{n_groups} independent groups, {' and '.join(reasons)} "
-                "(non-parametric test)"
-            )
-            alternative_tests = ["welch_anova", "permutation_test"]
-            
+                reasons.append("unequal variance")
+            rationale = f"{n_groups} independent groups, {' and '.join(reasons)} (non-parametric)"
+            alternative_tests = ["welch_anova"]
             warnings.append(
-                "Kruskal-Wallis tests for differences in medians (not means). "
-                "If significant, follow up with Dunn's test (with Bonferroni correction)."
+                "Kruskal-Wallis significant? Run Dunn's test (Holm correction) to identify which groups differ."
             )
-    
+
     else:
         raise ValueError(
             f"Invalid n_groups: {n_groups}. Must be >= 2 for group comparisons."
@@ -288,10 +292,13 @@ def recommend_test(
         'design': design
     }
 
+
 def build_data_profile(
     groups: Dict[str, pd.Series],
     design: str = "independent",
-    alpha: float = 0.05
+    alpha: float = 0.05,
+    run_posthoc: bool = False,         
+    primary_result: Dict = None        
 ) -> Dict[str, Any]:
     
     profile = {
@@ -300,9 +307,26 @@ def build_data_profile(
         'alpha': alpha,
         'normality': {},
         'sample_sizes': {},
-        'descriptive_stats': {}
+        'descriptive_stats': {},
+        'guardrails': {}     
     }
+
+
+    guardrail_result = check_guardrails(groups, design)
+    profile['guardrails'] = guardrail_result
     
+    if guardrail_result['blocked']:
+        profile['recommendation'] = {
+            'recommended_test': None,
+            'rationale': 'Analysis blocked by data quality issues.',
+            'blocked': True,
+            'issues': guardrail_result['issues'],
+            'warnings': [],
+            'alternative_tests': []
+        }
+        return profile
+
+
     # Check normality for each group
     for group_name, data in groups.items():
         profile['normality'][group_name] = check_normality(data, alpha)
@@ -332,4 +356,68 @@ def build_data_profile(
     )
     profile['recommendation'] = recommendation
     
+    if run_posthoc and primary_result and primary_result.get('p_value', 1.0) < alpha:
+        recommended = profile['recommendation']['recommended_test']
+        posthoc_map = {
+            'one_way_anova': 'tukey_hsd',
+            'welch_anova': 'tukey_hsd',    
+            'kruskal_wallis': 'dunns_test',
+            'friedman': 'pairwise_wilcoxon'
+        }
+        posthoc_test = posthoc_map.get(recommended)
+        if posthoc_test:
+            from stats_engine.executor import run_test
+            profile['posthoc'] = run_test(posthoc_test, groups)
+
     return profile
+
+
+def check_guardrails(
+    groups: Dict[str, pd.Series],
+    design: str = 'independent'
+) -> Dict[str, Any]:
+
+    issues = []
+    
+    for group_name, series in groups.items():
+        clean = series.dropna()
+        n = len(clean)
+        
+        # Critically small sample
+        if n < 5:
+            issues.append(
+                f"Group '{group_name}' has only {n} observations. "
+                f"Statistical tests are unreliable with n < 5. "
+                f"Collect more data before proceeding."
+            )
+        
+        # Zero variance (all values identical)
+        if n >= 2 and float(clean.std()) < 1e-10:
+            issues.append(
+                f"Group '{group_name}' has zero variance — all values are identical ({clean.iloc[0]}). "
+                f"Statistical testing is meaningless. Check for data entry errors."
+            )
+        
+        # Extreme missingness
+        original_n = len(series)
+        missing_pct = (original_n - n) / original_n * 100 if original_n > 0 else 0
+        if missing_pct > 20:
+            issues.append(
+                f"Group '{group_name}' has {missing_pct:.0f}% missing values. "
+                f"Results may be biased. Consider imputation or investigate why data is missing."
+            )
+    
+    # Repeated measures: check if all groups have same size
+    if design == 'paired':
+        sizes = [len(g.dropna()) for g in groups.values()]
+        if len(set(sizes)) > 1:
+            issues.append(
+                f"Paired design requires equal group sizes, but found: {dict(zip(groups.keys(), sizes))}. "
+                f"Mismatched sizes usually mean missing observations — cannot run paired test."
+            )
+    
+    return {
+        'blocked': len(issues) > 0,
+        'issues': issues,
+        'n_issues': len(issues)
+    }
