@@ -65,11 +65,10 @@ print(f"Effect size: {result['effect_size']:.4f}")
 | Pearson correlation | Both variables normal | r-squared |
 | Spearman correlation | Non-normal data | rho-squared |
 
-Previously I was routing normal-data-with-unequal-variance 3+ group scenarios to Kruskal-Wallis. That's too conservative — if the data is actually normal, Kruskal-Wallis wastes power. Welch's ANOVA is the right call there.
 
 ## Post-Hoc Tests
 
-A significant ANOVA or Kruskal-Wallis tells you *something* differs. Post-hoc tests tell you *which groups* differ. I couldn't find another prototype in this applicant pool that implements this step.
+A significant ANOVA or Kruskal-Wallis tells you *something* differs. Post-hoc tests tell you *which groups* differ. 
 
 | Primary Test | Post-Hoc Test | Correction |
 |---|---|---|
@@ -104,8 +103,6 @@ if profile['guardrails']['blocked']:
 ```
 
 ## Human-in-the-Loop
-
-The mentor explicitly said "user should be in the loop. user can turn that off if needed." So I built that.
 
 After the pipeline produces a recommendation, it pauses and shows the user the reasoning. The user can accept, override with a different test (logged for audit), ask for a detailed explanation, or disable HITL for the rest of the session.
 
