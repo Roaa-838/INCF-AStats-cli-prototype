@@ -146,32 +146,67 @@ def recommend_test(
     design: str = "independent",
     n_groups: int = 2
 ) -> Dict[str, Any]:
-
+    
     warnings = []
     assumptions = {}
     alternative_tests = []
     
-    # Extract assumption check results
     normality_results = data_profile.get('normality', {})
     homogeneity_result = data_profile.get('homogeneity', {})
     
-    # Check if ALL groups are normal
     all_normal = all(
         check_result.get('passed', False)
         for check_result in normality_results.values()
     )
     assumptions['all_groups_normal'] = all_normal
     
-    # Check variance homogeneity (if applicable)
-    variance_equal = homogeneity_result.get('passed', True)  # Default True if not tested
+    variance_equal = homogeneity_result.get('passed', True)
     assumptions['variance_equal'] = variance_equal
     
-    # Count how many groups failed normality
     non_normal_count = sum(
         1 for check in normality_results.values()
         if not check.get('passed', False)
     )
-    
+
+    # ── Repeated measures (3+ conditions) ─────────────────────
+    # Must come before the n_groups == 2 branch so 'repeated'
+    # design with 3 conditions doesn't fall through to paired logic
+    if design == 'repeated':
+        if n_groups < 3:
+            # Fall through to paired logic below
+            design = 'paired'
+        else:
+            if all_normal:
+                test = "repeated_anova"
+                rationale = (
+                    f"Repeated measures design with {n_groups} conditions, "
+                    "normal differences — repeated measures ANOVA."
+                )
+                alternative_tests = ["friedman"]
+                warnings.append(
+                    "Repeated ANOVA assumes sphericity. "
+                    "Consider Greenhouse-Geisser correction if sphericity is violated."
+                )
+            else:
+                test = "friedman"
+                rationale = (
+                    f"Repeated measures design with {n_groups} conditions, "
+                    f"{non_normal_count} condition(s) failed normality — Friedman test."
+                )
+                alternative_tests = ["repeated_anova"]
+                warnings.append(
+                    "Friedman significant? Follow up with pairwise Wilcoxon + Holm correction."
+                )
+            return {
+                'recommended_test': test,
+                'rationale': rationale,
+                'assumptions_met': assumptions,
+                'warnings': warnings,
+                'alternative_tests': alternative_tests,
+                'n_groups': n_groups,
+                'design': design
+            }
+
     # DECISION TREE
     
     if design == "paired":
@@ -386,15 +421,14 @@ def check_guardrails(
         # Critically small sample
         if n < 5:
             issues.append(
-                f"Group '{group_name}' has only {n} observations. "
-                f"Statistical tests are unreliable with n < 5. "
-                f"Collect more data before proceeding."
+                f"Variable '{group_name}' has only {n} observations. "
+                f"Statistical tests are unreliable with n < 5."
             )
         
-        # Zero variance (all values identical)
+        # Zero variance
         if n >= 2 and float(clean.std()) < 1e-10:
             issues.append(
-                f"Group '{group_name}' has zero variance — all values are identical ({clean.iloc[0]}). "
+                f"Variable '{group_name}' has zero variance — all values are identical. "
                 f"Statistical testing is meaningless. Check for data entry errors."
             )
         
@@ -403,17 +437,18 @@ def check_guardrails(
         missing_pct = (original_n - n) / original_n * 100 if original_n > 0 else 0
         if missing_pct > 20:
             issues.append(
-                f"Group '{group_name}' has {missing_pct:.0f}% missing values. "
-                f"Results may be biased. Consider imputation or investigate why data is missing."
+                f"Variable '{group_name}' has {missing_pct:.0f}% missing values. "
+                f"Results may be biased."
             )
     
-    # Repeated measures: check if all groups have same size
+    # Paired size check — skip for correlation (two variables, not paired observations)
     if design == 'paired':
         sizes = [len(g.dropna()) for g in groups.values()]
         if len(set(sizes)) > 1:
             issues.append(
-                f"Paired design requires equal group sizes, but found: {dict(zip(groups.keys(), sizes))}. "
-                f"Mismatched sizes usually mean missing observations — cannot run paired test."
+                f"Paired design requires equal group sizes, but found: "
+                f"{dict(zip(groups.keys(), sizes))}. "
+                f"Cannot run paired test with mismatched sizes."
             )
     
     return {

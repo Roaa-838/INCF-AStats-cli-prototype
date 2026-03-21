@@ -17,25 +17,25 @@ class StructureVerdict:
     warnings: list = field(default_factory=list)
     needs_clarification: Optional[str] = None
 
-
 def _is_likely_subject_col(series: pd.Series, df_len: int) -> bool:
- 
+
     n_unique = series.nunique(dropna=True)
     unique_ratio = n_unique / df_len
     
     # Too many unique values → probably a measurement, not a subject ID
     if unique_ratio > 0.7:
         return False
+    if n_unique < 5:
+        return False
     
-    # Too few unique values → probably a treatment/condition column
-    if unique_ratio < 0.02:
+    #  reject if unique_ratio is very low (2 groups out of 100 = 0.02)
+    if unique_ratio < 0.05:
         return False
     
     # Check if values repeat (each subject appears multiple times)
     value_counts = series.value_counts()
     mean_reps = value_counts.mean()
     
-    # Subject ID columns typically have each value appearing 2+ times
     return mean_reps >= 2.0
 
 

@@ -223,6 +223,92 @@ def continuous_correlation_nonnormal(
     )
 
 
+def repeated_measures_normal(n_subjects=25, seed=42):
+    """Paired design, normal differences → paired t-test"""
+    np.random.seed(seed)
+    before = np.random.normal(50, 10, n_subjects)
+    after = before + np.random.normal(5, 3, n_subjects)
+    subject_ids = np.arange(n_subjects)
+    
+    df = pd.DataFrame({
+        'subject': np.concatenate([subject_ids, subject_ids]),
+        'condition': ['before'] * n_subjects + ['after'] * n_subjects,
+        'score': np.concatenate([before, after])
+    })
+    return df, 'score', 'condition', 'paired_t', 'repeated_normal_2cond'
+
+
+def repeated_measures_nonnormal(n_subjects=25, seed=42):
+    """Paired design, non-normal → Wilcoxon"""
+    np.random.seed(seed)
+    before = np.random.exponential(1.0, n_subjects)
+    after = before * np.random.uniform(1.2, 1.5, n_subjects)
+    subject_ids = np.arange(n_subjects)
+    
+    df = pd.DataFrame({
+        'subject': np.concatenate([subject_ids, subject_ids]),
+        'condition': ['before'] * n_subjects + ['after'] * n_subjects,
+        'score': np.concatenate([before, after])
+    })
+    return df, 'score', 'condition', 'wilcoxon_signed_rank', 'repeated_nonnormal_2cond'
+
+
+def three_groups_normal_unequal_var(n_per_group=40, seed=42):
+    """3 groups, normal, unequal variance → Welch's ANOVA (NOT Kruskal-Wallis)"""
+    np.random.seed(seed)
+    a = np.random.normal(0, 1, n_per_group)
+    b = np.random.normal(0.5, 1, n_per_group)
+    c = np.random.normal(1, 5, n_per_group)   # much larger variance
+    
+    df = pd.DataFrame({
+        'value': np.concatenate([a, b, c]),
+        'group': ['A'] * n_per_group + ['B'] * n_per_group + ['C'] * n_per_group
+    })
+    return df, 'value', 'group', 'welch_anova', 'three_groups_normal_unequal_var'
+
+
+def three_conditions_repeated_nonnormal(n_subjects=20, seed=42):
+    """3 repeated conditions, non-normal → Friedman"""
+    np.random.seed(seed)
+    baseline = np.random.exponential(1.0, n_subjects)
+    cond1 = baseline + np.random.exponential(0.5, n_subjects)
+    cond2 = baseline + np.random.exponential(1.0, n_subjects)
+    subject_ids = np.arange(n_subjects)
+    
+    df = pd.DataFrame({
+        'subject': np.tile(subject_ids, 3),
+        'condition': ['A'] * n_subjects + ['B'] * n_subjects + ['C'] * n_subjects,
+        'score': np.concatenate([baseline, cond1, cond2])
+    })
+    return df, 'score', 'condition', 'friedman', 'three_cond_repeated_nonnormal'
+
+
+def zero_variance_guardrail(seed=42):
+    """One group has zero variance → should be BLOCKED"""
+    np.random.seed(seed)
+    df = pd.DataFrame({
+        'value': np.concatenate([
+            np.random.normal(0, 1, 30),
+            np.full(30, 5.0)             # identical values
+        ]),
+        'group': ['A'] * 30 + ['B'] * 30
+    })
+    return df, 'value', 'group', 'BLOCKED', 'zero_variance_guardrail'
+
+
+def small_n_guardrail(seed=42):
+    """n < 5 in one group → should be BLOCKED"""
+    np.random.seed(seed)
+    df = pd.DataFrame({
+        'value': np.concatenate([
+            np.random.normal(0, 1, 3),   # critically small
+            np.random.normal(1, 1, 30)
+        ]),
+        'group': ['tiny'] * 3 + ['normal'] * 30
+    })
+    return df, 'value', 'group', 'BLOCKED', 'small_n_guardrail'
+
+
 def neuro_reaction_times(
     n_per_condition: int = 40,
     seed: int = 42
@@ -312,5 +398,55 @@ def get_all_scenarios() -> Dict[str, Any]:
         'scenario_name': name,
         'description': 'Neuroscience RT data, 3 conditions, log-normal (Kruskal-Wallis)'
     }
-    
+
+    df, target, group, test, name = repeated_measures_normal()
+    scenarios[name] = {
+        'df': df, 'target_col': target, 'group_col': group,
+        'correct_test': test, 'scenario_name': name,
+        'description': 'Paired design, normal differences (paired t-test)',
+        'design': 'paired',
+        'subject_col': 'subject'
+    }
+
+    df, target, group, test, name = repeated_measures_nonnormal()
+    scenarios[name] = {
+        'df': df, 'target_col': target, 'group_col': group,
+        'correct_test': test, 'scenario_name': name,
+        'description': 'Paired design, non-normal differences (Wilcoxon)',
+        'design': 'paired',
+        'subject_col': 'subject'
+    }
+
+    df, target, group, test, name = three_groups_normal_unequal_var()
+    scenarios[name] = {
+        'df': df, 'target_col': target, 'group_col': group,
+        'correct_test': test, 'scenario_name': name,
+        'description': 'Three normal groups, unequal variance (Welch\'s ANOVA)'
+    }
+
+    df, target, group, test, name = three_conditions_repeated_nonnormal()
+    scenarios[name] = {
+        'df': df, 'target_col': target, 'group_col': group,
+        'correct_test': test, 'scenario_name': name,
+        'description': 'Three repeated conditions, non-normal (Friedman)',
+        'design': 'repeated',
+        'subject_col': 'subject'
+    }
+
+    df, target, group, test, name = zero_variance_guardrail()
+    scenarios[name] = {
+        'df': df, 'target_col': target, 'group_col': group,
+        'correct_test': test, 'scenario_name': name,
+        'description': 'Zero variance in one group (should be BLOCKED)',
+        'score_type': 'guardrail'
+    }
+
+    df, target, group, test, name = small_n_guardrail()
+    scenarios[name] = {
+        'df': df, 'target_col': target, 'group_col': group,
+        'correct_test': test, 'scenario_name': name,
+        'description': 'Critically small n in one group (should be BLOCKED)',
+        'score_type': 'guardrail'
+    }
+
     return scenarios
