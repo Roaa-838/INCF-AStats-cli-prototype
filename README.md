@@ -17,6 +17,56 @@ Built for GSoC 2026 - INCF Project #33.
 
 **Current status:** Eval harness shows 8/8 on synthetic benchmarks. Validated on Iris dataset and sleepstudy (Belenky et al., 2003) — the repeated-measures benchmark the project description references.
 
+
+## How the Decision Tree Works
+
+The routing is conservative — if ANY group fails an assumption, use the robust alternative. Added Welch's ANOVA and Friedman branches since the original:
+```mermaid
+graph TD
+    Start[Data Input] --> Profiler{Structureinference}
+    
+    Profiler -->|repeated measures| RM[Repeated Measures Path]
+    Profiler -->|independent| CheckGroups{How manygroups?}
+    Profiler -->|unknown| HITL_clarify[Ask user]
+
+    RM --> CheckRMGroups{How manyconditions?}
+    CheckRMGroups -->|2| CheckPairedNormal{Differencesnormal?}
+    CheckRMGroups -->|3+| CheckFriedman{Differencesnormal?}
+    CheckPairedNormal -->|Yes| PT[Paired t-test]
+    CheckPairedNormal -->|No| WX[Wilcoxon signed-rank]
+    CheckFriedman -->|Yes| RANOVA[Repeated ANOVA]
+    CheckFriedman -->|No| FR[Friedman test]
+
+    CheckGroups -->|2 groups| Check2Normal{Both groupsnormal?}
+    CheckGroups -->|3+ groups| Check3Normal{All groupsnormal?}
+    CheckGroups -->|Correlation| CheckCorrNormal{Both variablesnormal?}
+    
+    Check2Normal -->|Yes| CheckVariance{Equalvariance?}
+    Check2Normal -->|No| MW[Mann-Whitney U]
+    CheckVariance -->|Yes| IT[Independent t-test]
+    CheckVariance -->|No| WT[Welch's t-test]
+    
+    Check3Normal -->|Yes| Check3Variance{Equalvariance?}
+    Check3Normal -->|No| KW[Kruskal-Wallis]
+    Check3Variance -->|Yes| ANOVA[One-way ANOVA]
+    Check3Variance -->|No| WA[Welch's ANOVA]
+    
+    CheckCorrNormal -->|Yes| PR[Pearson r]
+    CheckCorrNormal -->|No| SR[Spearman rho]
+
+    style IT fill:#90EE90
+    style WT fill:#90EE90
+    style WA fill:#90EE90
+    style MW fill:#FFB6C1
+    style PT fill:#90EE90
+    style WX fill:#FFB6C1
+    style ANOVA fill:#90EE90
+    style KW fill:#FFB6C1
+    style FR fill:#FFB6C1
+    style PR fill:#87CEEB
+    style SR fill:#FFB6C1
+```
+
 ## Quick Demo
 ```python
 from data_utils.simulator import two_groups_normal_equal_var
