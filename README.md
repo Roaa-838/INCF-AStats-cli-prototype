@@ -65,11 +65,10 @@ print(f"Effect size: {result['effect_size']:.4f}")
 | Pearson correlation | Both variables normal | r-squared |
 | Spearman correlation | Non-normal data | rho-squared |
 
-Previously I was routing normal-data-with-unequal-variance 3+ group scenarios to Kruskal-Wallis. That's too conservative if the data is actually normal, Kruskal-Wallis wastes power. Welch's ANOVA is the right call there.
 
 ## Post-Hoc Tests
 
-A significant ANOVA or Kruskal-Wallis tells you *something* differs. Post-hoc tests tell you *which groups* differ. I couldn't find another prototype in this applicant pool that implements this step.
+A significant ANOVA or Kruskal-Wallis tells you *something* differs. Post-hoc tests tell you *which groups* differ. 
 
 | Primary Test | Post-Hoc Test | Correction |
 |---|---|---|
@@ -100,13 +99,10 @@ profile = build_data_profile(groups, design='independent')
 if profile['guardrails']['blocked']:
     for issue in profile['guardrails']['issues']:
         print(f"Blocked: {issue}")
-    # "Group 'control' has zero variance all values are identical (5.0).
-    #  Statistical testing is meaningless. Check for data entry errors."
+    # "Group 'control' has zero variance all values are identical (5.0) Statistical testing is meaningless. Check for data entry errors."
 ```
 
 ## Human-in-the-Loop
-
-The mentor explicitly said "user should be in the loop. user can turn that off if needed." So I built that.
 
 After the pipeline produces a recommendation, it pauses and shows the user the reasoning. The user can accept, override with a different test (logged for audit), ask for a detailed explanation, or disable HITL for the rest of the session.
 ```
@@ -116,7 +112,7 @@ Recommended test : kruskal_wallis
 Rationale        : 3 independent groups, 2 group(s) failed normality
 
 Warnings:
-  ⚠ Kruskal-Wallis significant? Run Dunn's test to identify which groups differ.
+  Kruskal-Wallis significant? Run Dunn's test to identify which groups differ.
 
 Options:
   [Enter]        Accept this recommendation
@@ -146,7 +142,6 @@ Scenario: Two non-normal groups
   Expected: mann_whitney_u
   Got: mann_whitney_u 
 
-... (5 more scenarios)
 
 RESULTS: 8/8 (100%)
 ```
@@ -225,17 +220,13 @@ graph TD
     CheckCorrNormal -->|Yes| PR[Pearson r]
     CheckCorrNormal -->|No| SR[Spearman rho]
 
-    style IT fill:#90EE90
-    style WT fill:#90EE90
-    style WA fill:#90EE90
-    style MW fill:#FFB6C1
-    style PT fill:#90EE90
-    style WX fill:#FFB6C1
-    style ANOVA fill:#90EE90
-    style KW fill:#FFB6C1
-    style FR fill:#FFB6C1
-    style PR fill:#87CEEB
-    style SR fill:#FFB6C1
+    classDef parametric fill:#90EE90,color:#000;
+    classDef nonparametric fill:#FFB6C1,color:#000;
+    classDef correlation fill:#87CEEB,color:#000;
+    
+    class IT,WT,WA,PT,ANOVA parametric;
+    class MW,WX,KW,FR,SR nonparametric;
+    class PR correlation;
 ```
 
 I went with conservative routing because I'd rather lose 5% statistical power than give someone invalid p-values.
