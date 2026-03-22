@@ -666,3 +666,51 @@ def _pairwise_wilcoxon(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'success': True,
         'error': None
     }
+
+def _games_howell(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
+    try:
+        import pingouin as pg
+    except ImportError:
+        return {
+            'success': False,
+            'error': 'pingouin required for Games-Howell. pip install pingouin'
+        }
+    
+    # Build long-format DataFrame
+    records = []
+    for group_name, series in data.items():
+        for val in series.dropna():
+            records.append({'group': group_name, 'value': float(val)})
+    df = pd.DataFrame(records)
+    
+    result = pg.pairwise_gameshowell(df, dv='value', between='group')
+    
+    comparisons = []
+    for _, row in result.iterrows():
+        comparisons.append({
+            'group1':      row['A'],
+            'group2':      row['B'],
+            'mean_diff':   round(float(row['mean(A)'] - row['mean(B)']), 4),
+            'p_adjusted':  round(float(row['pval']), 4),
+            'significant': float(row['pval']) < 0.05
+        })
+    
+    significant_pairs = [
+        f"{c['group1']} vs {c['group2']}"
+        for c in comparisons if c['significant']
+    ]
+    
+    return {
+        'test':             'games_howell',
+        'comparisons':      comparisons,
+        'n_comparisons':    len(comparisons),
+        'significant_pairs': significant_pairs,
+        'correction':       'Games-Howell (Welch-Satterthwaite df)',
+        'note': (
+            f"Games-Howell post-hoc (does not assume equal variance). "
+            f"{len(significant_pairs)} significant pair(s): "
+            f"{', '.join(significant_pairs) if significant_pairs else 'none'}."
+        ),
+        'success': True,
+        'error':   None
+    }
