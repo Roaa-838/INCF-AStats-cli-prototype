@@ -72,7 +72,8 @@ A significant ANOVA or Kruskal-Wallis tells you *something* differs. Post-hoc te
 
 | Primary Test | Post-Hoc Test | Correction |
 |---|---|---|
-| One-way ANOVA / Welch's ANOVA | Tukey HSD | Familywise error rate |
+| One-way ANOVA | Tukey HSD | Familywise error rate |
+| Welch's ANOVA | Games-Howell | Welch-Satterthwaite df |
 | Kruskal-Wallis | Dunn's test | Holm-Bonferroni |
 | Friedman | Pairwise Wilcoxon | Holm-Bonferroni |
 ```python
@@ -146,7 +147,7 @@ Scenario: Two non-normal groups
 RESULTS: 8/8 (100%)
 ```
 
-Also tested on Iris dataset - correctly identified that variance was unequal across species and routed to Kruskal-Wallis (p < 0.001, large effect size).
+Validated on the Iris dataset — all three species pass normality but variance is unequal (Levene p=0.002). The pipeline correctly routes to **Welch's ANOVA** (not Kruskal-Wallis), preserving statistical power while handling variance heterogeneity. F=138.91, p<0.001, eta-squared=0.654 (large effect). Games-Howell post-hoc confirms all three species differ significantly.
 
 ## Sleepstudy Validation
 
@@ -233,7 +234,15 @@ I went with conservative routing because I'd rather lose 5% statistical power th
 
 ## LLM Interpretation
 
-Uses Ollama (open-weight models, no API key) to generate publication-ready methods paragraphs. Falls back to templates if Ollama isn't running, so the tool works on any machine.
+Supports four backends with automatic fallback:
+
+1. **Claude API** — set `ANTHROPIC_API_KEY` environment variable
+2. **OpenAI API** — set `OPENAI_API_KEY` environment variable  
+3. **Ollama** — install and run locally, no API key needed
+4. **Template fallback** — always works, no dependencies
+
+The pipeline tries backends in order and uses whichever is available. If none are available, the template fallback produces a correctly structured methods paragraph.
+
 ```python
 from stats_engine.llm_interpreter import generate_methods_paragraph
 

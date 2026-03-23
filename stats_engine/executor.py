@@ -32,7 +32,8 @@ def run_test(
             'welch_anova': _welch_anova,
             'tukey_hsd': _tukey_hsd,
             'dunns_test': _dunns_test,
-            'pairwise_wilcoxon': _pairwise_wilcoxon
+            'pairwise_wilcoxon': _pairwise_wilcoxon,
+            'games_howell': _games_howell
         }
         
         if test_name not in test_map:
@@ -476,7 +477,6 @@ def _tukey_hsd(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
     
     # Extract pairwise results into readable format
     comparisons = []
-    summary = result.summary()
     
     # result._results_table has the data we need
     for row in result._results_table.data[1:]:  # skip header
@@ -616,9 +616,6 @@ def _dunns_test_manual(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 def _pairwise_wilcoxon(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
 
     groups = list(data.keys())
-    conditions = list(data.values())
-    
-    n = len(conditions[0].dropna())
     n_comparisons = len(groups) * (len(groups) - 1) // 2
     
     raw_results = []
@@ -667,45 +664,51 @@ def _pairwise_wilcoxon(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
         'error': None
     }
 
+
 def _games_howell(data: Dict[str, pd.Series], **kwargs) -> Dict[str, Any]:
-    try:
-        import pingouin as pg
-    except ImportError:
+    
+    if not HAS_PINGOUIN:
         return {
+            'test': 'games_howell',
             'success': False,
             'error': 'pingouin required for Games-Howell. pip install pingouin'
         }
-    
-    # Build long-format DataFrame
+
     records = []
     for group_name, series in data.items():
         for val in series.dropna():
             records.append({'group': group_name, 'value': float(val)})
     df = pd.DataFrame(records)
-    
+
     result = pg.pairwise_gameshowell(df, dv='value', between='group')
-    
+
     comparisons = []
     for _, row in result.iterrows():
+        # Column names vary by pingouin version — handle both
+        try:
+            mean_diff = float(row['mean(A)']) - float(row['mean(B)'])
+        except KeyError:
+            mean_diff = float(row.get('diff', 0.0))
+
         comparisons.append({
-            'group1':      row['A'],
-            'group2':      row['B'],
-            'mean_diff':   round(float(row['mean(A)'] - row['mean(B)']), 4),
-            'p_adjusted':  round(float(row['pval']), 4),
+            'group1':     row['A'],
+            'group2':     row['B'],
+            'mean_diff':  round(mean_diff, 4),
+            'p_adjusted': round(float(row['pval']), 4),
             'significant': float(row['pval']) < 0.05
         })
-    
+
     significant_pairs = [
         f"{c['group1']} vs {c['group2']}"
         for c in comparisons if c['significant']
     ]
-    
+
     return {
-        'test':             'games_howell',
-        'comparisons':      comparisons,
-        'n_comparisons':    len(comparisons),
+        'test':              'games_howell',
+        'comparisons':       comparisons,
+        'n_comparisons':     len(comparisons),
         'significant_pairs': significant_pairs,
-        'correction':       'Games-Howell (Welch-Satterthwaite df)',
+        'correction':        'Games-Howell (Welch-Satterthwaite df)',
         'note': (
             f"Games-Howell post-hoc (does not assume equal variance). "
             f"{len(significant_pairs)} significant pair(s): "

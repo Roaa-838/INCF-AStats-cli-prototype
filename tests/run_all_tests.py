@@ -4,11 +4,16 @@ import traceback
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# ── Colour helpers (work on all platforms) ────────────────────
+from stats_engine.assumption_checker import (
+    check_normality, check_homogeneity, build_data_profile, check_guardrails
+)
+from stats_engine.executor import run_test   
+
 def green(text): return f"\033[92m{text}\033[0m"
 def red(text):   return f"\033[91m{text}\033[0m"
 def yellow(text):return f"\033[93m{text}\033[0m"
 def bold(text):  return f"\033[1m{text}\033[0m"
+
 
 passed = []
 failed = []
@@ -146,24 +151,6 @@ section("BLOCK 3 — Decision Tree")
 def _profile(groups, design='independent'):
     return build_data_profile(groups, design=design)
 
-def test_dt_independent_t():
-    groups = {
-        'A': pd.Series(np.random.normal(0, 1, 50)),
-        'B': pd.Series(np.random.normal(1, 1, 50))
-    }
-    p = _profile(groups)
-    assert p['recommendation']['recommended_test'] == 'independent_t', \
-        f"Got {p['recommendation']['recommended_test']}"
-
-def test_dt_welch_t():
-    groups = {
-        'A': pd.Series(np.random.normal(0, 1, 50)),
-        'B': pd.Series(np.random.normal(0, 5, 50))
-    }
-    p = _profile(groups)
-    assert p['recommendation']['recommended_test'] == 'welch_t', \
-        f"Got {p['recommendation']['recommended_test']}"
-
 def test_dt_mann_whitney():
     groups = {
         'A': pd.Series(np.random.exponential(1, 50)),
@@ -174,7 +161,12 @@ def test_dt_mann_whitney():
         f"Got {p['recommendation']['recommended_test']}"
 
 def test_dt_one_way_anova():
-    groups = {k: pd.Series(np.random.normal(i, 1, 40)) for i, k in enumerate('ABC')}
+    rng = np.random.RandomState(7)
+    groups = {
+        'A': pd.Series(rng.normal(0, 1, 60)),
+        'B': pd.Series(rng.normal(3, 1, 60)),
+        'C': pd.Series(rng.normal(6, 1, 60))
+    }
     p = _profile(groups)
     assert p['recommendation']['recommended_test'] == 'one_way_anova', \
         f"Got {p['recommendation']['recommended_test']}"
@@ -224,6 +216,25 @@ def test_dt_wilcoxon():
     assert p['recommendation']['recommended_test'] == 'wilcoxon_signed_rank', \
         f"Got {p['recommendation']['recommended_test']}"
 
+def test_dt_independent_t():
+    groups = {
+        'A': pd.Series(np.random.normal(0, 1, 50)),
+        'B': pd.Series(np.random.normal(1, 1, 50))
+    }
+    p = _profile(groups)
+    assert p['recommendation']['recommended_test'] == 'independent_t', \
+        f"Got {p['recommendation']['recommended_test']}"
+
+def test_dt_welch_t():
+    rng = np.random.RandomState(123)
+    groups = {
+        'A': pd.Series(rng.normal(0, 1, 80)),   
+        'B': pd.Series(rng.normal(0, 5, 80))
+    }
+    p = _profile(groups)
+    assert p['recommendation']['recommended_test'] == 'welch_t', \
+        f"Got {p['recommendation']['recommended_test']}"
+    
 run("Decision tree: independent t-test",  test_dt_independent_t)
 run("Decision tree: Welch's t-test",      test_dt_welch_t)
 run("Decision tree: Mann-Whitney U",      test_dt_mann_whitney)
@@ -403,7 +414,6 @@ def test_pairwise_wilcoxon():
         f"C should differ from others. Got: {r['significant_pairs']}"
 
 def test_friedman_then_posthoc_pipeline():
-    """Full pipeline: Friedman significant → pairwise Wilcoxon post-hoc."""
     n = 25
     base = np.random.normal(50, 5, n)
     groups = {
@@ -420,11 +430,28 @@ def test_friedman_then_posthoc_pipeline():
     assert posthoc['success']
     assert len(posthoc['significant_pairs']) > 0, "Post-hoc should find differences"
 
+def test_games_howell_iris():
+    from sklearn.datasets import load_iris
+    iris   = load_iris()
+    df_iris = pd.DataFrame(iris.data, columns=iris.feature_names)
+    df_iris['species'] = iris.target_names[iris.target]
+    groups = {
+        sp: df_iris[df_iris['species'] == sp]['sepal length (cm)']
+        for sp in df_iris['species'].unique()
+    }
+    profile = build_data_profile(groups, design='independent')
+    assert profile['recommendation']['recommended_test'] == 'welch_anova', \
+        f"Expected welch_anova, got {profile['recommendation']['recommended_test']}"
+    posthoc = run_test('games_howell', groups)
+    assert posthoc['success'], f"Games-Howell failed: {posthoc.get('error')}"
+    assert len(posthoc['significant_pairs']) == 3, \
+        f"All 3 pairs should differ. Got: {posthoc['significant_pairs']}"
+
 run("Post-hoc: Tukey HSD finds significant pairs",       test_tukey_finds_differences)
 run("Post-hoc: Dunn's test finds significant pairs",     test_dunns_finds_differences)
 run("Post-hoc: pairwise Wilcoxon + Holm correction",     test_pairwise_wilcoxon)
 run("Post-hoc: Friedman → pairwise Wilcoxon pipeline",  test_friedman_then_posthoc_pipeline)
-
+run("Post-hoc: Games-Howell after Welch's ANOVA (Iris)", test_games_howell_iris)  
 
 # ══════════════════════════════════════════════════════════════
 # BLOCK 6 — Structure Inference (Profiler)

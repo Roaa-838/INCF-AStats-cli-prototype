@@ -340,7 +340,7 @@ def neuro_reaction_times(
 
 
 def get_all_scenarios() -> Dict[str, Any]:
-
+    np.random.seed(99)  
     scenarios = {}
     
     # Two-group scenarios (3)

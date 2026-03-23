@@ -332,8 +332,8 @@ def build_data_profile(
     groups: Dict[str, pd.Series],
     design: str = "independent",
     alpha: float = 0.05,
-    run_posthoc: bool = False,         
-    primary_result: Dict = None        
+    run_posthoc: bool = False,
+    primary_result: Dict = None
 ) -> Dict[str, Any]:
     
     profile = {
@@ -395,10 +395,11 @@ def build_data_profile(
         recommended = profile['recommendation']['recommended_test']
         posthoc_map = {
             'one_way_anova': 'tukey_hsd',
-            'welch_anova': 'tukey_hsd',    
+            'welch_anova':   'games_howell',    
             'kruskal_wallis': 'dunns_test',
             'friedman': 'pairwise_wilcoxon'
         }
+
         posthoc_test = posthoc_map.get(recommended)
         if posthoc_test:
             from stats_engine.executor import run_test
@@ -411,28 +412,24 @@ def check_guardrails(
     groups: Dict[str, pd.Series],
     design: str = 'independent'
 ) -> Dict[str, Any]:
-
     issues = []
     
     for group_name, series in groups.items():
         clean = series.dropna()
         n = len(clean)
         
-        # Critically small sample
         if n < 5:
             issues.append(
                 f"Variable '{group_name}' has only {n} observations. "
                 f"Statistical tests are unreliable with n < 5."
             )
         
-        # Zero variance
         if n >= 2 and float(clean.std()) < 1e-10:
             issues.append(
                 f"Variable '{group_name}' has zero variance — all values are identical. "
                 f"Statistical testing is meaningless. Check for data entry errors."
             )
         
-        # Extreme missingness
         original_n = len(series)
         missing_pct = (original_n - n) / original_n * 100 if original_n > 0 else 0
         if missing_pct > 20:
@@ -441,7 +438,6 @@ def check_guardrails(
                 f"Results may be biased."
             )
     
-    # Paired size check — skip for correlation (two variables, not paired observations)
     if design == 'paired':
         sizes = [len(g.dropna()) for g in groups.values()]
         if len(set(sizes)) > 1:
@@ -453,6 +449,6 @@ def check_guardrails(
     
     return {
         'blocked': len(issues) > 0,
-        'issues': issues,
+        'issues':  issues,
         'n_issues': len(issues)
     }

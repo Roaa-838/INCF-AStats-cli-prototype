@@ -5,6 +5,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from stats_engine.executor import run_test
+from stats_engine.assumption_checker import build_data_profile
 
 np.random.seed(42)
 
@@ -111,6 +112,30 @@ def test_guardrails_catch_small_n():
     assert result['blocked'], "n<5 should block analysis"
     print(f"Guardrail caught small n: {result['issues'][0][:60]}...")
 
+def test_games_howell_after_welch_anova():
+
+    from sklearn.datasets import load_iris
+    import pandas as pd
+    iris = load_iris()
+    df = pd.DataFrame(iris.data, columns=iris.feature_names)
+    df['species'] = iris.target_names[iris.target]
+
+    groups = {
+        species: df[df['species'] == species]['sepal length (cm)']
+        for species in df['species'].unique()
+    }
+
+    # Welch's ANOVA should be selected
+    profile = build_data_profile(groups, design='independent')
+    assert profile['recommendation']['recommended_test'] == 'welch_anova', \
+        f"Expected welch_anova, got {profile['recommendation']['recommended_test']}"
+
+   
+    posthoc = run_test('games_howell', groups)
+    assert posthoc['success'], f"Games-Howell failed: {posthoc.get('error')}"
+    assert len(posthoc['significant_pairs']) == 3, \
+        f"All 3 species pairs should be significant. Got: {posthoc['significant_pairs']}"
+    print(f"Games-Howell correctly identifies all 3 significant pairs")
 
 if __name__ == '__main__':
     test_tukey_hsd_finds_differences()
@@ -118,4 +143,5 @@ if __name__ == '__main__':
     test_friedman_then_posthoc()
     test_guardrails_catch_zero_variance()
     test_guardrails_catch_small_n()
+    test_games_howell_after_welch_anova()  
     print("\nAll post-hoc and guardrail tests passed")
