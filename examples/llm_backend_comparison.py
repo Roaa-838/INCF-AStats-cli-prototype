@@ -10,7 +10,8 @@ and are able to work agentically quite well."
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+from dotenv import load_dotenv
+load_dotenv()
 import numpy as np
 import pandas as pd
 from stats_engine.assumption_checker import build_data_profile

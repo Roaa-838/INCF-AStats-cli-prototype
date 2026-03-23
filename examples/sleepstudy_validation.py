@@ -1,7 +1,8 @@
 import sys
 import os
 import urllib.request
-
+from dotenv import load_dotenv
+load_dotenv()
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -191,13 +192,16 @@ def print_comparison_table(naive: dict, astats: dict):
     r = astats['result']
     ph = astats['posthoc']
     sig_pairs = ', '.join(ph['significant_pairs'][:3]) if ph else 'none'
-    
+    p_str       = "< 0.001" if r['p_value'] < 0.001 else f"= {r['p_value']:.3f}"
+    effect_word = "large" if r['effect_size'] > 0.5 else "medium"
+    df_val      = r['n_conditions'] - 1
+
     methods = (
         f"Reaction time across 10 days of sleep deprivation was analyzed using "
-        f"a Friedman test (χ²({r['n_conditions']-1}) = {r['statistic']:.2f}, "
-        f"p {'< 0.001' if r['p_value'] < 0.001 else f'= {r['p_value']:.3f}'}, "
+        f"a Friedman test (χ²({df_val}) = {r['statistic']:.2f}, "
+        f"p {p_str}, "
         f"Kendall's W = {r['effect_size']:.3f}, "
-        f"{'large' if r['effect_size'] > 0.5 else 'medium'} effect). "
+        f"{effect_word} effect). "
         f"The Friedman test was selected because normality failed in multiple "
         f"conditions and measurements were repeated within subjects (n = {r['n_subjects']}). "
         f"Post-hoc pairwise Wilcoxon tests with Holm correction identified "

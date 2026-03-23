@@ -2,14 +2,13 @@
 """
 LLM Interpretation Layer.
 
-Supports three backends (in order of preference):
-1. Anthropic Claude API  — best statistical reasoning, low cost
-2. OpenAI GPT-4 API     — strong statistical reasoning, widely available
-3. Ollama (local)        — free, works offline, no API key needed
-4. Template fallback     — always works, no LLM required
-
-The mentor specifically suggested Codex/Claude as inexpensive options
-that work well agentically for statistical tasks.
+Supports five backends (in order of preference):
+1. Anthropic Claude API  — best statistical reasoning (paid, ANTHROPIC_API_KEY)
+2. OpenAI GPT-4 API     — strong statistical reasoning (paid, OPENAI_API_KEY)
+3. Groq API             — free tier, Llama 3 (GROQ_API_KEY)
+4. Gemini API           — free tier, Gemini Flash (GEMINI_API_KEY)
+5. Ollama (local)       — free, offline, no API key needed
+6. Template fallback    — always works, no LLM required
 """
 from __future__ import annotations
 import json
@@ -36,9 +35,12 @@ TEST_DISPLAY_NAMES = {
     'pairwise_wilcoxon':    "pairwise Wilcoxon signed-rank tests with Holm correction",
 }
 
+
 def _get_test_display_name(test_name: str) -> str:
-    return TEST_DISPLAY_NAMES.get(test_name, 
-                                   f"a {test_name.replace('_', ' ')} test")
+    return TEST_DISPLAY_NAMES.get(
+        test_name, f"a {test_name.replace('_', ' ')} test"
+    )
+
 
 def _effect_magnitude(effect_size: float, effect_type: str) -> str:
     if effect_type == 'cohen_d':
@@ -53,6 +55,7 @@ def _effect_magnitude(effect_size: float, effect_type: str) -> str:
         if abs(effect_size) >= threshold:
             return label
     return 'negligible'
+
 
 def _build_prompt(test_result: dict, profile: dict) -> str:
     rec         = profile.get('recommendation', {})
@@ -75,10 +78,11 @@ Number of groups: {profile.get('n_groups', 2)}
 
 Output ONE sentence only. No preamble, no explanation, no markdown."""
 
-# ── Backend 1: Anthropic Claude API ──────────────────────────
 
-def _call_claude(prompt: str, model: str = "claude-haiku-4-5-20251001") -> Optional[str]:
+# ── Backend 1: Anthropic Claude API (paid — keep for GSoC/future) ──
 
+def _call_claude(prompt: str,
+                 model: str = "claude-haiku-4-5-20251001") -> Optional[str]:
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
         return None
@@ -99,7 +103,6 @@ def _call_claude(prompt: str, model: str = "claude-haiku-4-5-20251001") -> Optio
         },
         method="POST"
     )
-
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             result = json.loads(r.read().decode('utf-8'))
@@ -108,10 +111,10 @@ def _call_claude(prompt: str, model: str = "claude-haiku-4-5-20251001") -> Optio
         return None
 
 
-# ── Backend 2: OpenAI GPT-4 API ──────────────────────────────
+# ── Backend 2: OpenAI API (paid — keep for GSoC/future) ──────────
 
-def _call_openai(prompt: str, model: str = "gpt-4o-mini") -> Optional[str]:
-
+def _call_openai(prompt: str,
+                 model: str = "gpt-4o-mini") -> Optional[str]:
     api_key = os.environ.get('OPENAI_API_KEY')
     if not api_key:
         return None
@@ -132,7 +135,6 @@ def _call_openai(prompt: str, model: str = "gpt-4o-mini") -> Optional[str]:
         },
         method="POST"
     )
-
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             result = json.loads(r.read().decode('utf-8'))
@@ -141,7 +143,72 @@ def _call_openai(prompt: str, model: str = "gpt-4o-mini") -> Optional[str]:
         return None
 
 
-# ── Backend 3: Ollama (local open-weight) ────────────────────
+# ── Backend 3: Groq API (FREE — use now) ─────────────────────────
+# Sign up: console.groq.com — no credit card, instant key
+# Runs Llama 3, Mixtral. Set GROQ_API_KEY environment variable.
+
+def _call_groq(prompt: str,
+               model: str = "llama-3.1-8b-instant") -> Optional[str]:
+    api_key = os.environ.get('GROQ_API_KEY')
+    if not api_key:
+        return None
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 200,
+        "temperature": 0
+    }).encode('utf-8')
+
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read().decode('utf-8'))
+            return result['choices'][0]['message']['content'].strip()
+    except Exception:
+        return None
+
+
+# ── Backend 4: Google Gemini API (FREE — use now) ─────────────────
+# Sign up: aistudio.google.com — no credit card, instant key
+# Set GEMINI_API_KEY environment variable.
+
+def _call_gemini(prompt: str,
+                 model: str = "gemini-2.0-flash") -> Optional[str]:
+    api_key = os.environ.get('GEMINI_API_KEY')
+    if not api_key:
+        return None
+
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}]
+    }).encode('utf-8')
+
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+           f"{model}:generateContent?key={api_key}")
+
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read().decode('utf-8'))
+            return (result['candidates'][0]['content']
+                         ['parts'][0]['text'].strip())
+    except Exception:
+        return None
+
+
+# ── Backend 5: Ollama (local, free, offline) ──────────────────────
 
 def _ollama_available(base_url: str = "http://localhost:11434") -> bool:
     try:
@@ -153,7 +220,7 @@ def _ollama_available(base_url: str = "http://localhost:11434") -> bool:
 
 
 def _call_ollama(prompt: str, model: str = "qwen2.5",
-                  base_url: str = "http://localhost:11434") -> Optional[str]:
+                 base_url: str = "http://localhost:11434") -> Optional[str]:
     payload = json.dumps({
         "model": model,
         "prompt": prompt,
@@ -175,7 +242,8 @@ def _call_ollama(prompt: str, model: str = "qwen2.5",
         return None
 
 
-# ── Template fallback ─────────────────────────────────────────
+# ── Template fallback (always works) ─────────────────────────────
+
 def _template_fallback(test_result: dict, profile: dict,
                         posthoc_result: dict = None) -> str:
     test_name   = test_result.get('test', 'unknown')
@@ -209,9 +277,8 @@ def _template_fallback(test_result: dict, profile: dict,
         f"{effect_display} = {effect_size:.3f}, {magnitude} effect)."
     )
 
-    # Append post-hoc summary if provided and significant
     if posthoc_result and posthoc_result.get('success'):
-        sig_pairs = posthoc_result.get('significant_pairs', [])
+        sig_pairs    = posthoc_result.get('significant_pairs', [])
         posthoc_name = _get_test_display_name(posthoc_result.get('test', ''))
         if sig_pairs:
             base += (
@@ -219,10 +286,12 @@ def _template_fallback(test_result: dict, profile: dict,
                 f"pairwise difference(s): {', '.join(sig_pairs)}."
             )
 
-    base += "\n[Generated by template fallback — install Ollama or set an API key for enhanced output]"
+    base += ("\n[Generated by template fallback — set GROQ_API_KEY or "
+             "GEMINI_API_KEY for free LLM output]")
     return base
 
-# ── Main entry point ──────────────────────────────────────────
+
+# ── Main entry point ──────────────────────────────────────────────
 
 def generate_methods_paragraph(
     test_result: dict,
@@ -230,44 +299,63 @@ def generate_methods_paragraph(
     use_llm: bool = True,
     backend: str = "auto",
     model: Optional[str] = None,
-    posthoc_result: dict = None 
+    posthoc_result: dict = None
 ) -> str:
+    """
+    Generate a publication-ready methods paragraph.
 
+    Backend priority when backend='auto':
+        claude  → openai  → groq  → gemini  → ollama  → template
+
+    Free options right now: groq, gemini, ollama
+    Paid options (keep for GSoC): claude, openai
+    """
     if not use_llm:
         return _template_fallback(test_result, profile, posthoc_result)
 
-    prompt = _build_prompt(test_result, profile)
-    output = None
+    prompt       = _build_prompt(test_result, profile)
+    output       = None
     backend_used = "template"
 
     if backend == "auto":
-        # Try Claude first
+        # Paid backends first (used when keys are available)
         output = _call_claude(prompt, model or "claude-haiku-4-5-20251001")
         if output:
             backend_used = "claude-haiku"
         else:
-            # Try OpenAI
             output = _call_openai(prompt, model or "gpt-4o-mini")
             if output:
                 backend_used = "gpt-4o-mini"
             else:
-                # Try Ollama
-                if _ollama_available():
-                    output = _call_ollama(prompt, model or "qwen2.5")
+                # Free backends
+                output = _call_groq(prompt, model or "llama-3.3-70b-versatile")
+                if output:
+                    backend_used = "llama-3.3-70b-versatile"
+                else:
+                    output = _call_gemini(prompt, model or "gemini-2.0-flash")
                     if output:
-                        backend_used = f"ollama/{model or 'qwen2.5'}"
+                        backend_used = "gemini-2.0-flash"
+                    else:
+                        if _ollama_available():
+                            output = _call_ollama(prompt, model or "qwen2.5")
+                            if output:
+                                backend_used = f"ollama/{model or 'qwen2.5'}"
 
     elif backend == "claude":
-        output = _call_claude(prompt, model or "claude-haiku-4-5-20251001")
+        output       = _call_claude(prompt, model or "claude-haiku-4-5-20251001")
         backend_used = "claude"
-
     elif backend == "openai":
-        output = _call_openai(prompt, model or "gpt-4o-mini")
+        output       = _call_openai(prompt, model or "gpt-4o-mini")
         backend_used = "openai"
-
+    elif backend == "groq":
+        output       = _call_groq(prompt, model or "llama-3.3-70b-versatile")
+        backend_used = "groq"
+    elif backend == "gemini":
+        output       = _call_gemini(prompt, model or "gemini-2.0-flash")
+        backend_used = "gemini"
     elif backend == "ollama":
         if _ollama_available():
-            output = _call_ollama(prompt, model or "qwen2.5")
+            output       = _call_ollama(prompt, model or "qwen2.5")
             backend_used = "ollama"
 
     if output and len(output) > 20:
@@ -277,22 +365,32 @@ def generate_methods_paragraph(
 
 
 def compare_backends(test_result: dict, profile: dict) -> dict:
-
-    prompt = _build_prompt(test_result, profile)
+    """
+    Run all available backends and return outputs side by side.
+    Free backends (Groq, Gemini) will produce output without any API cost.
+    """
+    prompt  = _build_prompt(test_result, profile)
     results = {}
 
-    claude_out = _call_claude(prompt)
-    results['claude'] = claude_out if claude_out else "API key not set or unavailable"
+    # Paid (kept for future use)
+    out = _call_claude(prompt)
+    results['claude'] = out if out else "ANTHROPIC_API_KEY not set"
 
-    openai_out = _call_openai(prompt)
-    results['openai'] = openai_out if openai_out else "API key not set or unavailable"
+    out = _call_openai(prompt)
+    results['openai'] = out if out else "OPENAI_API_KEY not set"
+
+    # Free (use now)
+    out = _call_groq(prompt)
+    results['groq'] = out if out else "GROQ_API_KEY not set"
+
+    out = _call_gemini(prompt)
+    results['gemini'] = out if out else "GEMINI_API_KEY not set"
 
     if _ollama_available():
-        ollama_out = _call_ollama(prompt)
-        results['ollama'] = ollama_out if ollama_out else "Ollama call failed"
+        out = _call_ollama(prompt)
+        results['ollama'] = out if out else "Ollama call failed"
     else:
         results['ollama'] = "Ollama not running"
 
     results['template'] = _template_fallback(test_result, profile)
-
     return results

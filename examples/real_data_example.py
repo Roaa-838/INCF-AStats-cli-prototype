@@ -4,7 +4,8 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+from dotenv import load_dotenv
+load_dotenv()
 from sklearn.datasets import load_iris
 from stats_engine.assumption_checker import build_data_profile
 from stats_engine.executor import run_test
